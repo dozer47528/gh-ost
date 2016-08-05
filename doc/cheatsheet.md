@@ -110,6 +110,28 @@ gh-ost \
   --execute
 ```
 
+### d. Migrate from one table to another table
+
+Migrate from one table to another table cheatsheet:
+```shell
+gh-ost \
+    --user="gh-ost" \
+    --password="123456" \
+    --host="host1.local" \
+    --migrate
+    --migrate-user="gh-ost" \
+    --migrate-password="123456" \
+    --migrate-host="host2.local" \
+    --database="test"
+    --migrate-database="test-new" \
+    --table="user" \
+    --migrate-table="user-new" \
+    --verbose \
+    --exact-rowcount \
+    --switch-to-rbr \
+    --execute
+```
+
 ### cnf file
 
 You may use a `cnf` file in the following format:
