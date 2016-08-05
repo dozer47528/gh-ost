@@ -49,8 +49,16 @@ func main() {
 	flag.StringVar(&migrationContext.CliPassword, "password", "", "MySQL password")
 	flag.StringVar(&migrationContext.ConfigFile, "conf", "", "Config file")
 
+	flag.BoolVar(&migrationContext.Migrate, "migrate", false, "Start the Migrate model")
+	flag.StringVar(&migrationContext.ApplierConnectionConfig.Key.Hostname, "migrate-host", "127.0.0.1", "Target MySQL hostname (preferably a replica, not the master)")
+	flag.IntVar(&migrationContext.ApplierConnectionConfig.Key.Port, "migrate-port", 3306, "Target MySQL port (preferably a replica, not the master)")
+	flag.StringVar(&migrationContext.CliMigrateUser, "migrate-user", "", "Target MySQL user")
+	flag.StringVar(&migrationContext.CliMigratePassword, "migrate-password", "", "Target MySQL password")
+
 	flag.StringVar(&migrationContext.DatabaseName, "database", "", "database name (mandatory)")
+	flag.StringVar(&migrationContext.MigrateDatabaseName, "migrate-database", "", "database name (mandatory)")
 	flag.StringVar(&migrationContext.OriginalTableName, "table", "", "table name (mandatory)")
+	flag.StringVar(&migrationContext.MigrateTableName, "migrate-table", "", "table name (mandatory)")
 	flag.StringVar(&migrationContext.AlterStatement, "alter", "", "alter statement (mandatory)")
 	flag.BoolVar(&migrationContext.CountTableRows, "exact-rowcount", false, "actually count table rows as opposed to estimate them (results in more accurate progress estimation)")
 	flag.BoolVar(&migrationContext.AllowedRunningOnMaster, "allow-on-master", false, "allow this migration to run directly on master. Preferably it would run on a replica")
@@ -58,6 +66,8 @@ func main() {
 	flag.BoolVar(&migrationContext.NullableUniqueKeyAllowed, "allow-nullable-unique-key", false, "allow gh-ost to migrate based on a unique key with nullable columns. As long as no NULL values exist, this should be OK. If NULL values exist in chosen key, data may be corrupted. Use at your own risk!")
 	flag.BoolVar(&migrationContext.ApproveRenamedColumns, "approve-renamed-columns", false, "in case your `ALTER` statement renames columns, gh-ost will note that and offer its interpretation of the rename. By default gh-ost does not proceed to execute. This flag approves that gh-ost's interpretation si correct")
 	flag.BoolVar(&migrationContext.SkipRenamedColumns, "skip-renamed-columns", false, "in case your `ALTER` statement renames columns, gh-ost will note that and offer its interpretation of the rename. By default gh-ost does not proceed to execute. This flag tells gh-ost to skip the renamed columns, i.e. to treat what gh-ost thinks are renamed columns as unrelated columns. NOTE: you may lose column data")
+
+
 
 	executeFlag := flag.Bool("execute", false, "actually execute the alter & migrate the table. Default is noop: do some tests and exit")
 	flag.BoolVar(&migrationContext.TestOnReplica, "test-on-replica", false, "Have the migration run on a replica, not on the master. At the end of migration replication is stopped, and tables are swapped and immediately swap-revert. Replication remains stopped and you can compare the two tables for building trust")
@@ -132,7 +142,7 @@ func main() {
 	if migrationContext.OriginalTableName == "" {
 		log.Fatalf("--table must be provided and table name must not be empty")
 	}
-	if migrationContext.AlterStatement == "" {
+	if migrationContext.AlterStatement == "" && ! migrationContext.Migrate {
 		log.Fatalf("--alter must be provided and statement must not be empty")
 	}
 	migrationContext.Noop = !(*executeFlag)
@@ -144,6 +154,15 @@ func main() {
 	}
 	if migrationContext.MigrateOnReplica && migrationContext.TestOnReplica {
 		log.Fatalf("--migrate-on-replica and --test-on-replica are mutually exclusive")
+	}
+	if migrationContext.Migrate && migrationContext.MigrateOnReplica {
+		log.Fatalf("--migrate and --migrate-on-replica are mutually exclusive")
+	}
+	if migrationContext.Migrate && migrationContext.TestOnReplica {
+		log.Fatalf("--migrate and --test-on-replica are mutually exclusive")
+	}
+	if migrationContext.Migrate && migrationContext.AllowedRunningOnMaster {
+		log.Fatalf("--migrate and --allow-on-master are mutually exclusive")
 	}
 
 	switch *cutOver {

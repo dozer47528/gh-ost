@@ -25,15 +25,15 @@ type RowsEstimateMethod string
 
 const (
 	TableStatusRowsEstimate RowsEstimateMethod = "TableStatusRowsEstimate"
-	ExplainRowsEstimate                        = "ExplainRowsEstimate"
-	CountRowsEstimate                          = "CountRowsEstimate"
+	ExplainRowsEstimate = "ExplainRowsEstimate"
+	CountRowsEstimate = "CountRowsEstimate"
 )
 
 type CutOver int
 
 const (
-	CutOverAtomic  CutOver = iota
-	CutOverTwoStep         = iota
+	CutOverAtomic CutOver = iota
+	CutOverTwoStep = iota
 )
 
 var (
@@ -43,23 +43,27 @@ var (
 // MigrationContext has the general, global state of migration. It is used by
 // all components throughout the migration process.
 type MigrationContext struct {
-	DatabaseName      string
-	OriginalTableName string
-	AlterStatement    string
+	DatabaseName                        string
+	MigrateDatabaseName                 string
+	OriginalTableName                   string
+	MigrateTableName                    string
+	AlterStatement                      string
 
-	CountTableRows           bool
-	AllowedRunningOnMaster   bool
-	AllowedMasterMaster      bool
-	SwitchToRowBinlogFormat  bool
-	NullableUniqueKeyAllowed bool
-	ApproveRenamedColumns    bool
-	SkipRenamedColumns       bool
+	CountTableRows                      bool
+	AllowedRunningOnMaster              bool
+	AllowedMasterMaster                 bool
+	SwitchToRowBinlogFormat             bool
+	NullableUniqueKeyAllowed            bool
+	ApproveRenamedColumns               bool
+	SkipRenamedColumns                  bool
 
-	config      ContextConfig
-	configMutex *sync.Mutex
-	ConfigFile  string
-	CliUser     string
-	CliPassword string
+	config                              ContextConfig
+	configMutex                         *sync.Mutex
+	ConfigFile                          string
+	CliUser                             string
+	CliPassword                         string
+	CliMigrateUser                      string
+	CliMigratePassword                  string
 
 	defaultNumRetries                   int64
 	ChunkSize                           int64
@@ -77,70 +81,71 @@ type MigrationContext struct {
 	CutOverLockTimeoutSeconds           int64
 	PanicFlagFile                       string
 
-	DropServeSocket bool
-	ServeSocketFile string
-	ServeTCPPort    int64
+	DropServeSocket                     bool
+	ServeSocketFile                     string
+	ServeTCPPort                        int64
 
-	Noop                    bool
-	TestOnReplica           bool
-	MigrateOnReplica        bool
-	OkToDropTable           bool
-	InitiallyDropOldTable   bool
-	InitiallyDropGhostTable bool
-	CutOverType             CutOver
+	Noop                                bool
+	TestOnReplica                       bool
+	Migrate                             bool
+	MigrateOnReplica                    bool
+	OkToDropTable                       bool
+	InitiallyDropOldTable               bool
+	InitiallyDropGhostTable             bool
+	CutOverType                         CutOver
 
-	TableEngine               string
-	RowsEstimate              int64
-	UsedRowsEstimateMethod    RowsEstimateMethod
-	OriginalBinlogFormat      string
-	OriginalBinlogRowImage    string
-	InspectorConnectionConfig *mysql.ConnectionConfig
-	ApplierConnectionConfig   *mysql.ConnectionConfig
-	StartTime                 time.Time
-	RowCopyStartTime          time.Time
-	RowCopyEndTime            time.Time
-	LockTablesStartTime       time.Time
-	RenameTablesStartTime     time.Time
-	RenameTablesEndTime       time.Time
-	pointOfInterestTime       time.Time
-	pointOfInterestTimeMutex  *sync.Mutex
-	CurrentLag                int64
-	TotalRowsCopied           int64
-	TotalDMLEventsApplied     int64
-	isThrottled               bool
-	throttleReason            string
-	throttleMutex             *sync.Mutex
-	IsPostponingCutOver       int64
-	CountingRowsFlag          int64
+	TableEngine                         string
+	RowsEstimate                        int64
+	UsedRowsEstimateMethod              RowsEstimateMethod
+	OriginalBinlogFormat                string
+	OriginalBinlogRowImage              string
+	InspectorConnectionConfig           *mysql.ConnectionConfig
+	ApplierConnectionConfig             *mysql.ConnectionConfig
+	StartTime                           time.Time
+	RowCopyStartTime                    time.Time
+	RowCopyEndTime                      time.Time
+	LockTablesStartTime                 time.Time
+	RenameTablesStartTime               time.Time
+	RenameTablesEndTime                 time.Time
+	pointOfInterestTime                 time.Time
+	pointOfInterestTimeMutex            *sync.Mutex
+	CurrentLag                          int64
+	TotalRowsCopied                     int64
+	TotalDMLEventsApplied               int64
+	isThrottled                         bool
+	throttleReason                      string
+	throttleMutex                       *sync.Mutex
+	IsPostponingCutOver                 int64
+	CountingRowsFlag                    int64
 
-	OriginalTableColumns             *sql.ColumnList
-	OriginalTableUniqueKeys          [](*sql.UniqueKey)
-	GhostTableColumns                *sql.ColumnList
-	GhostTableUniqueKeys             [](*sql.UniqueKey)
-	UniqueKey                        *sql.UniqueKey
-	SharedColumns                    *sql.ColumnList
-	ColumnRenameMap                  map[string]string
-	MappedSharedColumns              *sql.ColumnList
-	MigrationRangeMinValues          *sql.ColumnValues
-	MigrationRangeMaxValues          *sql.ColumnValues
-	Iteration                        int64
-	MigrationIterationRangeMinValues *sql.ColumnValues
-	MigrationIterationRangeMaxValues *sql.ColumnValues
+	OriginalTableColumns                *sql.ColumnList
+	OriginalTableUniqueKeys             [](*sql.UniqueKey)
+	GhostTableColumns                   *sql.ColumnList
+	GhostTableUniqueKeys                [](*sql.UniqueKey)
+	UniqueKey                           *sql.UniqueKey
+	SharedColumns                       *sql.ColumnList
+	ColumnRenameMap                     map[string]string
+	MappedSharedColumns                 *sql.ColumnList
+	MigrationRangeMinValues             *sql.ColumnValues
+	MigrationRangeMaxValues             *sql.ColumnValues
+	Iteration                           int64
+	MigrationIterationRangeMinValues    *sql.ColumnValues
+	MigrationIterationRangeMaxValues    *sql.ColumnValues
 
-	CanStopStreaming func() bool
+	CanStopStreaming                    func() bool
 }
 
 type ContextConfig struct {
 	Client struct {
-		User     string
-		Password string
-	}
-	Osc struct {
-		Chunk_Size            int64
-		Max_Lag_Millis        int64
-		Replication_Lag_Query string
-		Max_Load              string
-	}
+		       User     string
+		       Password string
+	       }
+	Osc    struct {
+		       Chunk_Size            int64
+		       Max_Lag_Millis        int64
+		       Replication_Lag_Query string
+		       Max_Load              string
+	       }
 }
 
 var context *MigrationContext
@@ -174,7 +179,11 @@ func GetMigrationContext() *MigrationContext {
 
 // GetGhostTableName generates the name of ghost table, based on original table name
 func (this *MigrationContext) GetGhostTableName() string {
-	return fmt.Sprintf("_%s_gho", this.OriginalTableName)
+	if this.Migrate {
+		return this.MigrateTableName
+	} else {
+		return fmt.Sprintf("_%s_gho", this.OriginalTableName)
+	}
 }
 
 // GetOldTableName generates the name of the "old" table, into which the original table is renamed.

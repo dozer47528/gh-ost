@@ -29,14 +29,14 @@ import (
 type ChangelogState string
 
 const (
-	TablesInPlace              ChangelogState = "TablesInPlace"
-	AllEventsUpToLockProcessed                = "AllEventsUpToLockProcessed"
+	TablesInPlace ChangelogState = "TablesInPlace"
+	AllEventsUpToLockProcessed = "AllEventsUpToLockProcessed"
 )
 
 type tableWriteFunc func() error
 
 const (
-	applyEventsQueueBuffer        = 100
+	applyEventsQueueBuffer = 100
 	heartbeatIntervalMilliseconds = 1000
 )
 
@@ -44,24 +44,24 @@ type PrintStatusRule int
 
 const (
 	HeuristicPrintStatusRule PrintStatusRule = iota
-	ForcePrintStatusRule                     = iota
-	ForcePrintStatusAndHint                  = iota
+	ForcePrintStatusRule = iota
+	ForcePrintStatusAndHint = iota
 )
 
 // Migrator is the main schema migration flow manager.
 type Migrator struct {
-	parser           *sql.Parser
-	inspector        *Inspector
-	applier          *Applier
-	eventsStreamer   *EventsStreamer
-	server           *Server
-	migrationContext *base.MigrationContext
-	hostname         string
+	parser                                 *sql.Parser
+	inspector                              *Inspector
+	applier                                *Applier
+	eventsStreamer                         *EventsStreamer
+	server                                 *Server
+	migrationContext                       *base.MigrationContext
+	hostname                               string
 
-	tablesInPlace              chan bool
-	rowCopyComplete            chan bool
-	allEventsUpToLockProcessed chan bool
-	panicAbort                 chan error
+	tablesInPlace                          chan bool
+	rowCopyComplete                        chan bool
+	allEventsUpToLockProcessed             chan bool
+	panicAbort                             chan error
 
 	rowCopyCompleteFlag                    int64
 	allEventsUpToLockProcessedInjectedFlag int64
@@ -70,10 +70,10 @@ type Migrator struct {
 	userCommandedUnpostponeFlag            int64
 	// copyRowsQueue should not be buffered; if buffered some non-damaging but
 	//  excessive work happens at the end of the iteration as new copy-jobs arrive befroe realizing the copy is complete
-	copyRowsQueue    chan tableWriteFunc
-	applyEventsQueue chan tableWriteFunc
+	copyRowsQueue                          chan tableWriteFunc
+	applyEventsQueue                       chan tableWriteFunc
 
-	handledChangelogStates map[string]bool
+	handledChangelogStates                 map[string]bool
 }
 
 func NewMigrator() *Migrator {
@@ -150,7 +150,7 @@ func (this *Migrator) shouldThrottle() (result bool, reason string) {
 	// Replication lag throttle
 	maxLagMillisecondsThrottleThreshold := atomic.LoadInt64(&this.migrationContext.MaxLagMillisecondsThrottleThreshold)
 	lag := atomic.LoadInt64(&this.migrationContext.CurrentLag)
-	if time.Duration(lag) > time.Duration(maxLagMillisecondsThrottleThreshold)*time.Millisecond {
+	if time.Duration(lag) > time.Duration(maxLagMillisecondsThrottleThreshold) * time.Millisecond {
 		return true, fmt.Sprintf("lag=%fs", time.Duration(lag).Seconds())
 	}
 	checkThrottleControlReplicas := true
@@ -162,7 +162,7 @@ func (this *Migrator) shouldThrottle() (result bool, reason string) {
 		if lagResult.Err != nil {
 			return true, fmt.Sprintf("%+v %+v", lagResult.Key, lagResult.Err)
 		}
-		if lagResult.Lag > time.Duration(maxLagMillisecondsThrottleThreshold)*time.Millisecond {
+		if lagResult.Lag > time.Duration(maxLagMillisecondsThrottleThreshold) * time.Millisecond {
 			return true, fmt.Sprintf("%+v replica-lag=%fs", lagResult.Key, lagResult.Lag.Seconds())
 		}
 	}
@@ -452,6 +452,9 @@ func (this *Migrator) cutOver() (err error) {
 	this.migrationContext.MarkPointOfInterest()
 	this.sleepWhileTrue(
 		func() (bool, error) {
+			if this.migrationContext.Migrate{
+				return true, nil
+			}
 			if this.migrationContext.PostponeCutOverFlagFile == "" {
 				return false, nil
 			}
@@ -809,24 +812,31 @@ func (this *Migrator) initiateInspector() (err error) {
 	if err := this.inspector.InspectOriginalTable(); err != nil {
 		return err
 	}
-	// So far so good, table is accessible and valid.
-	// Let's get master connection config
-	if this.migrationContext.ApplierConnectionConfig, err = this.inspector.getMasterConnectionConfig(); err != nil {
-		return err
-	}
-	if this.migrationContext.TestOnReplica || this.migrationContext.MigrateOnReplica {
-		if this.migrationContext.InspectorIsAlsoApplier() {
-			return fmt.Errorf("Instructed to --test-on-replica or --migrate-on-replica, but the server we connect to doesn't seem to be a replica")
+
+	if !this.migrationContext.Migrate {
+		// So far so good, table is accessible and valid.
+		// Let's get master connection config
+		if this.migrationContext.ApplierConnectionConfig, err = this.inspector.getMasterConnectionConfig(); err != nil {
+			return err
 		}
-		log.Infof("--test-on-replica or --migrate-on-replica given. Will not execute on master %+v but rather on replica %+v itself",
-			*this.migrationContext.ApplierConnectionConfig.ImpliedKey, *this.migrationContext.InspectorConnectionConfig.ImpliedKey,
-		)
-		this.migrationContext.ApplierConnectionConfig = this.migrationContext.InspectorConnectionConfig.Duplicate()
-		if this.migrationContext.GetThrottleControlReplicaKeys().Len() == 0 {
-			this.migrationContext.AddThrottleControlReplicaKey(this.migrationContext.InspectorConnectionConfig.Key)
+
+		if this.migrationContext.TestOnReplica || this.migrationContext.MigrateOnReplica {
+			if this.migrationContext.InspectorIsAlsoApplier() {
+				return fmt.Errorf("Instructed to --test-on-replica or --migrate-on-replica, but the server we connect to doesn't seem to be a replica")
+			}
+			log.Infof("--test-on-replica or --migrate-on-replica given. Will not execute on master %+v but rather on replica %+v itself",
+				*this.migrationContext.ApplierConnectionConfig.ImpliedKey, *this.migrationContext.InspectorConnectionConfig.ImpliedKey,
+			)
+			this.migrationContext.ApplierConnectionConfig = this.migrationContext.InspectorConnectionConfig.Duplicate()
+			if this.migrationContext.GetThrottleControlReplicaKeys().Len() == 0 {
+				this.migrationContext.AddThrottleControlReplicaKey(this.migrationContext.InspectorConnectionConfig.Key)
+			}
+		} else if this.migrationContext.InspectorIsAlsoApplier() && !this.migrationContext.AllowedRunningOnMaster {
+			return fmt.Errorf("It seems like this migration attempt to run directly on master. Preferably it would be executed on a replica (and this reduces load from the master). To proceed please provide --allow-on-master")
 		}
-	} else if this.migrationContext.InspectorIsAlsoApplier() && !this.migrationContext.AllowedRunningOnMaster {
-		return fmt.Errorf("It seems like this migration attempt to run directly on master. Preferably it would be executed on a replica (and this reduces load from the master). To proceed please provide --allow-on-master")
+	} else {
+		this.migrationContext.ApplierConnectionConfig.User = this.migrationContext.CliMigrateUser
+		this.migrationContext.ApplierConnectionConfig.Password = this.migrationContext.CliMigratePassword
 	}
 
 	log.Infof("Master found to be %+v", *this.migrationContext.ApplierConnectionConfig.ImpliedKey)
@@ -941,7 +951,7 @@ func (this *Migrator) printStatus(rule PrintStatusRule, writers ...io.Writer) {
 	}
 
 	// Before status, let's see if we should print a nice reminder for what exactly we're doing here.
-	shouldPrintMigrationStatusHint := (elapsedSeconds%600 == 0)
+	shouldPrintMigrationStatusHint := (elapsedSeconds % 600 == 0)
 	if rule == ForcePrintStatusAndHint {
 		shouldPrintMigrationStatusHint = true
 	}
@@ -977,13 +987,13 @@ func (this *Migrator) printStatus(rule PrintStatusRule, writers ...io.Writer) {
 	} else if etaSeconds <= 60 {
 		shouldPrintStatus = true
 	} else if etaSeconds <= 180 {
-		shouldPrintStatus = (elapsedSeconds%5 == 0)
+		shouldPrintStatus = (elapsedSeconds % 5 == 0)
 	} else if elapsedSeconds <= 180 {
-		shouldPrintStatus = (elapsedSeconds%5 == 0)
+		shouldPrintStatus = (elapsedSeconds % 5 == 0)
 	} else if this.migrationContext.TimeSincePointOfInterest().Seconds() <= 60 {
-		shouldPrintStatus = (elapsedSeconds%5 == 0)
+		shouldPrintStatus = (elapsedSeconds % 5 == 0)
 	} else {
-		shouldPrintStatus = (elapsedSeconds%30 == 0)
+		shouldPrintStatus = (elapsedSeconds % 30 == 0)
 	}
 	if rule == ForcePrintStatusRule || rule == ForcePrintStatusAndHint {
 		shouldPrintStatus = true
